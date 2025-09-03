@@ -6,7 +6,9 @@ const fetch = require('node-fetch'); // npm install node-fetch
 const { PrismaClient } = require('@prisma/client');
 const OpenAI = require('openai');
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  log: ['query', 'info', 'warn', 'error'] // مهم عشان يظهر لك أي أخطاء
+});
 const app = express();
 const PORT = process.env.PORT || 3000;
 
