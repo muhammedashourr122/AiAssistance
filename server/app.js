@@ -7,7 +7,7 @@ const { PrismaClient } = require('@prisma/client');
 const OpenAI = require('openai');
 
 const prisma = new PrismaClient({
-  log: ['query', 'info', 'warn', 'error'] // مهم عشان يظهر لك أي أخطاء
+  log: ['query', 'info', 'warn', 'error']
 });
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -44,6 +44,7 @@ app.get('/auth/callback', async (req, res) => {
   };
 
   try {
+    // 1️⃣ الحصول على الـ access token
     const response = await fetch(accessTokenRequestUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -53,17 +54,26 @@ app.get('/auth/callback', async (req, res) => {
     const data = await response.json();
     const accessToken = data.access_token;
 
-    // تخزين أو تحديث المتجر في قاعدة البيانات
+    // 2️⃣ تخزين أو تحديث المتجر في قاعدة البيانات
     await prisma.shop.upsert({
       where: { shopDomain: shop },
       update: { accessToken },
       create: { shopDomain: shop, accessToken },
     });
 
-    res.redirect('/'); // توجه المستخدم للواجهة الرئيسية
+    // 3️⃣ auto-connect: جلب بيانات المتجر للتأكد من الاتصال
+    const shopResponse = await fetch(`https://${shop}/admin/api/2025-01/shop.json`, {
+      headers: { 'X-Shopify-Access-Token': accessToken }
+    });
+
+    const shopData = await shopResponse.json();
+    console.log(`✅ Connected to shop: ${shopData.shop.name}`);
+
+    // 4️⃣ إعادة توجيه المستخدم للواجهة الرئيسية
+    res.redirect('/');
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Error while exchanging access token');
+    console.error('Shopify connection error:', err);
+    res.status(500).send('Error while exchanging access token or connecting to shop');
   }
 });
 
@@ -98,7 +108,6 @@ app.post('/api/test-ai', async (req, res) => {
   }
 });
 
-// مثال لتوليد وصف منتجات (تقدر تضيف بقية الـ endpoints القديمة هنا)
 app.post('/api/generate-description', async (req, res) => {
   try {
     const { productTitle, tone } = req.body;
