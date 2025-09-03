@@ -6,10 +6,6 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 
-import path from "path";
-import express from "express";
-const app = express();
-
 // Serve static frontend files
 app.use(express.static(path.join(__dirname, "../frontend"))); // عدّل حسب اسم فولدر الـ frontend
 
