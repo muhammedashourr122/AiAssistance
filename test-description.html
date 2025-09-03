@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Product Description Generation</title>
+    <style>
+        body { font-family: Arial; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .form-group { margin: 15px 0; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, select { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        button { background: #007cba; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #005a87; }
+        #result { margin-top: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 4px; }
+        .loading { color: #666; font-style: italic; }
+        .success { background: #f0f8f0; }
+        .error { background: #f8f0f0; }
+    </style>
+</head>
+<body>
+    <h1>🤖 AI Product Description Generator</h1>
+    
+    <form id="descriptionForm">
+        <div class="form-group">
+            <label>Product Title:</label>
+            <input type="text" id="productTitle" placeholder="e.g., Wireless Bluetooth Headphones" required>
+        </div>
+        
+        <div class="form-group">
+            <label>Price:</label>
+            <input type="text" id="productPrice" placeholder="e.g., $99.99">
+        </div>
+        
+        <div class="form-group">
+            <label>Product Type:</label>
+            <input type="text" id="productType" placeholder="e.g., Electronics">
+        </div>
+        
+        <div class="form-group">
+            <label>Tone:</label>
+            <select id="tone">
+                <option value="professional">Professional</option>
+                <option value="casual">Casual</option>
+                <option value="luxury">Luxury</option>
+            </select>
+        </div>
+        
+        <button type="submit">Generate Description</button>
+    </form>
+    
+    <div id="result"></div>
+
+    <script>
+        document.getElementById('descriptionForm').onsubmit = async function(e) {
+            e.preventDefault();
+            
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div class="loading">🤖 Generating description...</div>';
+            
+            const formData = {
+                productTitle: document.getElementById('productTitle').value,
+                productPrice: document.getElementById('productPrice').value,
+                productType: document.getElementById('productType').value,
+                tone: document.getElementById('tone').value
+            };
+            
+            try {
+                const response = await fetch('/api/generate-description', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultDiv.className = 'success';
+                    resultDiv.innerHTML = `
+                        <h3>✅ Generated Description:</h3>
+                        <div>${data.generatedDescription}</div>
+                        <p><small>Tokens used: ${data.tokensUsed} | Tone: ${data.tone}</small></p>
+                    `;
+                } else {
+                    resultDiv.className = 'error';
+                    resultDiv.innerHTML = `<h3>❌ Error:</h3><p>${data.error}</p>`;
+                }
+            } catch (error) {
+                resultDiv.className = 'error';
+                resultDiv.innerHTML = `<h3>❌ Network Error:</h3><p>${error.message}</p>`;
+            }
+        };
+    </script>
+</body>
+</html>

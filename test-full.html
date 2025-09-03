@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Shopify App - Full Test</title>
+    <style>
+        body { font-family: Arial; max-width: 900px; margin: 0 auto; padding: 20px; }
+        .test-section { border: 1px solid #ddd; margin: 20px 0; padding: 20px; border-radius: 8px; }
+        .form-group { margin: 15px 0; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        button { background: #007cba; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin: 5px; }
+        button:hover { background: #005a87; }
+        .result { margin-top: 15px; padding: 15px; border-radius: 4px; }
+        .success { background: #f0f8f0; border: 1px solid #4caf50; }
+        .error { background: #f8f0f0; border: 1px solid #f44336; }
+        .loading { color: #666; font-style: italic; }
+    </style>
+</head>
+<body>
+    <h1>🤖 AI Shopify App - Full Test Suite</h1>
+    
+    <!-- Server Tests -->
+    <div class="test-section">
+        <h2>1. Server Tests</h2>
+        <button onclick="testHealth()">Test Server Health</button>
+        <button onclick="testDB()">Test Database</button>
+        <div id="serverResults" class="result"></div>
+    </div>
+
+    <!-- AI Generation Tests -->
+    <div class="test-section">
+        <h2>2. AI Product Description Generator</h2>
+        <form id="generationForm">
+            <div class="form-group">
+                <label>Product Title:</label>
+                <input type="text" id="productTitle" placeholder="e.g., Wireless Bluetooth Headphones" required>
+            </div>
+            
+            <div class="form-group">
+                <label>Price:</label>
+                <input type="text" id="productPrice" placeholder="e.g., $99.99">
+            </div>
+            
+            <div class="form-group">
+                <label>Product Type:</label>
+                <input type="text" id="productType" placeholder="e.g., Electronics">
+            </div>
+            
+            <div class="form-group">
+                <label>Tone:</label>
+                <select id="tone">
+                    <option value="professional">Professional</option>
+                    <option value="casual">Casual</option>
+                    <option value="luxury">Luxury</option>
+                </select>
+            </div>
+            
+            <button type="submit">Generate & Save Description</button>
+        </form>
+        
+        <div id="generationResults" class="result"></div>
+    </div>
+
+<!-- Shopify Connection Test -->
+<div class="test-section">
+    <h2>3. Shopify Store Connection</h2>
+    <div class="form-group">
+        <label>Shop Domain:</label>
+        <input type="text" id="shopDomain" placeholder="your-store.myshopify.com">
+    </div>
+    
+    <div class="form-group">
+        <label>Access Token:</label>
+        <input type="password" id="accessToken" placeholder="shpat_xxxxx">
+    </div>
+    
+    <button onclick="testShopify()">Test Shopify Connection</button>
+    
+    <div id="shopifyResults" class="result"></div>
+</div>
+
+
+    <script>
+
+async function testShopify() {
+    const resultDiv = document.getElementById('shopifyResults');
+    resultDiv.innerHTML = '<div class="loading">Testing Shopify connection...</div>';
+    
+    const shopDomain = document.getElementById('shopDomain').value;
+    const accessToken = document.getElementById('accessToken').value;
+    
+    if (!shopDomain || !accessToken) {
+        resultDiv.className = 'result error';
+        resultDiv.innerHTML = '<p>Please enter both shop domain and access token</p>';
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/test-shopify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ shopDomain, accessToken })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            resultDiv.className = 'result success';
+            resultDiv.innerHTML = `
+                <h4>✅ Shopify Connected!</h4>
+                <p><strong>Store:</strong> ${data.shopDomain}</p>
+                <p><strong>Products found:</strong> ${data.productCount}</p>
+                <h5>Sample Products:</h5>
+                <ul>
+                    ${data.sampleProducts.map(p => `
+                        <li>${p.title} - $${p.price} ${p.hasDescription ? '(has description)' : '(no description)'}</li>
+                    `).join('')}
+                </ul>
+            `;
+        } else {
+            resultDiv.className = 'result error';
+            resultDiv.innerHTML = `<h4>❌ Shopify Error:</h4><p>${data.error}</p>`;
+        }
+    } catch (error) {
+        resultDiv.className = 'result error';
+        resultDiv.innerHTML = `<h4>❌ Connection Error:</h4><p>${error.message}</p>`;
+    }
+}
+
+        async function testHealth() {
+            const resultDiv = document.getElementById('serverResults');
+            resultDiv.innerHTML = '<div class="loading">Testing server...</div>';
+            
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                resultDiv.className = 'result success';
+                resultDiv.innerHTML = `<h4>✅ Server Health:</h4><pre>${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `<h4>❌ Server Error:</h4><p>${error.message}</p>`;
+            }
+        }
+
+        async function testDB() {
+            const resultDiv = document.getElementById('serverResults');
+            resultDiv.innerHTML = '<div class="loading">Testing database...</div>';
+            
+            try {
+                const response = await fetch('/api/test-db');
+                const data = await response.json();
+                resultDiv.className = 'result success';
+                resultDiv.innerHTML = `<h4>✅ Database:</h4><pre>${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `<h4>❌ Database Error:</h4><p>${error.message}</p>`;
+            }
+        }
+
+        document.getElementById('generationForm').onsubmit = async function(e) {
+            e.preventDefault();
+            
+            const resultDiv = document.getElementById('generationResults');
+            resultDiv.innerHTML = '<div class="loading">🤖 Generating description and saving to database...</div>';
+            
+            const formData = {
+                productTitle: document.getElementById('productTitle').value,
+                productPrice: document.getElementById('productPrice').value,
+                productType: document.getElementById('productType').value,
+                tone: document.getElementById('tone').value
+            };
+            
+            try {
+                const response = await fetch('/api/generate-and-save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultDiv.className = 'result success';
+                    resultDiv.innerHTML = `
+                        <h4>✅ Generated & Saved Successfully!</h4>
+                        <p><strong>Content ID:</strong> ${data.contentId}</p>
+                        <p><strong>Tokens Used:</strong> ${data.tokensUsed}</p>
+                        <p><strong>Usage Remaining:</strong> ${data.usageRemaining}</p>
+                        <h5>Generated Description:</h5>
+                        <div style="border: 1px solid #ccc; padding: 15px; background: #f9f9f9;">
+                            ${data.generatedDescription}
+                        </div>
+                    `;
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML = `<h4>❌ Error:</h4><p>${data.error}</p>`;
+                }
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `<h4>❌ Network Error:</h4><p>${error.message}</p>`;
+            }
+        };
+    </script>
+</body>
+</html>

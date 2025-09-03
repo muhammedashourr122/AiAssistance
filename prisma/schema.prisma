@@ -1,0 +1,56 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Shop {
+  id                String    @id @default(cuid())
+  shopDomain        String    @unique
+  accessToken       String
+  subscriptionStatus String   @default("trial")
+  usageCount        Int       @default(0)
+  usageLimit        Int       @default(100)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  generatedContent GeneratedContent[]
+  
+  @@map("shops")
+}
+
+model GeneratedContent {
+  id                   String   @id @default(cuid())
+  shopId               String
+  productId            String
+  productTitle         String?
+  originalDescription  String?
+  generatedDescription String
+  contentType          String   // 'description', 'title', 'meta'
+  tone                 String   // 'professional', 'casual', 'luxury'
+  status               String   @default("generated") // 'generated', 'applied', 'rejected'
+  createdAt            DateTime @default(now())
+  aiModel              String   @default("gpt-4")
+  tokensUsed           Int?
+  
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  
+  @@map("generated_content")
+}
+
+model ContentTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  prompt      String
+  tone        String
+  industry    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  
+  @@map("content_templates")
+}
