@@ -1,86 +1,109 @@
-// Load environment variables
 require('dotenv').config();
-
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fetch = require('node-fetch'); // npm install node-fetch
 const { PrismaClient } = require('@prisma/client');
 const OpenAI = require('openai');
-const shopifyService = require('./services/shopifySimple');
 
+const prisma = new PrismaClient();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, "../frontend"))); // فولدر frontend
 
-// Serve frontend
-app.use(express.static(path.join(__dirname, "../frontend"))); 
+// =======================
+// Shopify OAuth
+// =======================
+app.get('/auth', (req, res) => {
+  const shop = req.query.shop;
+  if (!shop) return res.status(400).send('Shop parameter missing');
 
-// Catch-all for SPA
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "../frontend/index.html"));
+  const state = Math.random().toString(36).substring(2, 15);
+  const redirectUri = `${process.env.HOST}/auth/callback`;
+
+  const installUrl = `https://${shop}/admin/oauth/authorize?client_id=${process.env.SHOPIFY_API_KEY}&scope=${process.env.SCOPES}&state=${state}&redirect_uri=${redirectUri}`;
+
+  res.redirect(installUrl);
 });
 
-// Basic API
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', server: 'running' });
-});
+app.get('/auth/callback', async (req, res) => {
+  const { shop, code } = req.query;
+  if (!shop || !code) return res.status(400).send('Required params missing');
 
-// Test AI connection
-app.post('/api/test-ai', async (req, res) => {
+  const accessTokenRequestUrl = `https://${shop}/admin/oauth/access_token`;
+  const accessTokenPayload = {
+    client_id: process.env.SHOPIFY_API_KEY,
+    client_secret: process.env.SHOPIFY_API_SECRET,
+    code,
+  };
+
   try {
-    if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your_openai_key_here') {
-      return res.status(400).json({ error: 'OpenAI API key not configured.' });
-    }
-
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [{ role: 'user', content: 'Say "AI working!"' }],
-      max_tokens: 10
+    const response = await fetch(accessTokenRequestUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(accessTokenPayload),
     });
 
-    res.json({ success: true, response: completion.choices[0].message.content });
+    const data = await response.json();
+    const accessToken = data.access_token;
 
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, error: error.message });
+    // تخزين أو تحديث المتجر في قاعدة البيانات
+    await prisma.shop.upsert({
+      where: { shopDomain: shop },
+      update: { accessToken },
+      create: { shopDomain: shop, accessToken },
+    });
+
+    res.redirect('/'); // توجه المستخدم للواجهة الرئيسية
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Error while exchanging access token');
   }
 });
 
-// Test DB connection
-app.get('/api/test-db', async (req, res) => {
-  try {
-    const prisma = new PrismaClient();
-    const shopCount = await prisma.shop.count();
-    await prisma.$disconnect();
-
-    res.json({ success: true, message: 'Database connected!', shopCount });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, error: error.message });
-  }
+// Webhook لإلغاء التثبيت
+app.post('/webhooks/app/uninstalled', async (req, res) => {
+  const shop = req.headers['x-shopify-shop-domain'];
+  await prisma.shop.delete({ where: { shopDomain: shop } });
+  res.sendStatus(200);
 });
 
-// Generate product description
-app.post('/api/generate-description', async (req, res) => {
+// =======================
+// AI Endpoints
+// =======================
+app.post('/api/test-ai', async (req, res) => {
   try {
-    const { productTitle, productPrice, productType, tone } = req.body;
-    if (!productTitle) return res.status(400).json({ error: 'Product title is required' });
-
     if (!process.env.OPENAI_API_KEY) {
       return res.status(400).json({ error: 'OpenAI API key not configured' });
     }
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [{ role: 'user', content: 'Say "AI working!" and nothing else.' }],
+      max_tokens: 10
+    });
+    res.json({
+      success: true,
+      response: completion.choices[0].message.content
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// مثال لتوليد وصف منتجات (تقدر تضيف بقية الـ endpoints القديمة هنا)
+app.post('/api/generate-description', async (req, res) => {
+  try {
+    const { productTitle, tone } = req.body;
+    if (!productTitle) return res.status(400).json({ error: 'Product title is required' });
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const prompt = `Create a ${tone || 'professional'} product description for:
-Product: ${productTitle}
-Price: ${productPrice || 'Contact for pricing'}
-Type: ${productType || 'General product'}
-Requirements: 150-200 words, professional, include benefits and call-to-action, HTML <p> tags`;
+    const prompt = `Create a ${tone || 'professional'} product description for: ${productTitle}`;
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
@@ -89,55 +112,20 @@ Requirements: 150-200 words, professional, include benefits and call-to-action, 
       temperature: 0.7
     });
 
-    res.json({
-      success: true,
-      originalTitle: productTitle,
-      generatedDescription: completion.choices[0].message.content,
-      tokensUsed: completion.usage.total_tokens,
-      tone: tone || 'professional'
-    });
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, error: error.message });
+    res.json({ success: true, generatedDescription: completion.choices[0].message.content });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// Shopify connection test
-app.post('/api/test-shopify', async (req, res) => {
-  try {
-    const { shopDomain, accessToken } = req.body;
-    if (!shopDomain || !accessToken) return res.status(400).json({ error: 'Shop domain and access token required' });
-
-    if (!shopDomain.includes('.myshopify.com')) {
-      return res.status(400).json({ error: 'Invalid shop domain format' });
-    }
-
-    const products = await shopifyService.getProducts(shopDomain, accessToken, 5);
-    res.json({ success: true, shopDomain, productCount: products.length, sampleProducts: products });
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, error: error.message });
-  }
+// =======================
+// Serve SPA
+// =======================
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, "../frontend/index.html"));
 });
 
-// Apply generated description to Shopify
-app.post('/api/apply-to-shopify', async (req, res) => {
-  try {
-    const { shopDomain, accessToken, productId, description } = req.body;
-    if (!shopDomain || !accessToken || !productId || !description) {
-      return res.status(400).json({ error: 'All fields required' });
-    }
-
-    const updatedProduct = await shopifyService.updateProduct(shopDomain, accessToken, productId, description);
-    res.json({ success: true, message: 'Description applied!', productId: updatedProduct.id });
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, error: error.message });
-  }
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on ${process.env.HOST || 'http://localhost:' + PORT}`);
 });
-
-// Start server
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
